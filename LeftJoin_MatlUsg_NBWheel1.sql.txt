@@ -1,0 +1,81 @@
+﻿--SELECT DISTINCT ON (UP.equipment, UP.axel )
+SELECT DISTINCT ON (UP.equipment, UP.axel, UP.transact_date )
+
+UP.party_id, UP.transact_date, UP.axel, UP.road_number,
+UP.equipment, UP.createdate, UP.minrim, UP.minflangeh, UP.minflanget,
+UP."Latest_Reading_Max_Date", UP."Usable_Rim_Rate", UP."RIM_Rate",
+UP.WheelWear1, UP.WheelWear2, UP.ImputedRim1, UP.ImputedRim2,
+UP.DaysInterval, UP.Avg_RIMRate_Imputed, ImputedRim_Final, UP.Avg_RIM_Rate
+FROM 
+
+(
+SELECT C.party_id, C.transact_date, C.axel, C.road_number,
+	B.equipment, --B.axel, 
+	B.createdate, B.minrim, B.minflangeh, B.minflanget,
+	-- A.road_number, A.axle, 
+	A."Latest_Reading_Max_Date", A."Usable_Rim_Rate", A."RIM_Rate",
+	A."Usable_Rim_Rate" * (C.transact_date - B.createdate) as WheelWear1,
+	A."RIM_Rate" * (C.transact_date - B.createdate) as WheelWear2,
+	B.minrim - (A."Usable_Rim_Rate" * (C.transact_date - B.createdate) ) as ImputedRim1,
+	B.minrim - (A."RIM_Rate"        * (C.transact_date - B.createdate) ) as ImputedRim2,
+	(C.transact_date - B.createdate) as DaysInterval
+	,
+	CASE WHEN A."Latest_Reading_Max_Date" IS NULL
+	-- THEN 1.25
+	THEN ( B.minrim - (
+	       ( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )  * (C.transact_date - B.createdate) )
+	)
+	END AS Avg_RIMRate_Imputed,
+	
+	CASE WHEN A."Usable_Rim_Rate" > 0   --- IS NULL equivalent NaN
+	THEN ( B.minrim - (A."RIM_Rate"        * (C.transact_date - B.createdate) ) )
+	ELSE ( B.minrim - (A."Usable_Rim_Rate" * (C.transact_date - B.createdate) ) )
+	END AS ImputedRim_Final,
+	
+	( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )   as Avg_RIM_Rate
+
+FROM   public.up_eservice C
+
+LEFT JOIN           ---public.up_wheel_readings2 B
+( -- Select DISTINCT ON (equipment, axel )
+  Select 
+         equipment, axel, createdate, minrim, minflangeh, minflanget
+  from public.up_wheel_readings2 
+  ORDER BY equipment ASC, axel ASC, createdate DESC
+) B
+
+ON   C.axel = B.axel
+AND (C.road_number   = B.equipment)
+AND (C.transact_date >= B.createdate)  --Correct Matl Usage date >= Wheel Read Date;
+
+LEFT JOIN public.up_wear_rate A  -- Natalia's wear rate
+on A.axle = B.axel
+AND (A.road_number   = B.equipment)
+
+WHERE C.transact_date >= '2015-08-01'   -- 1 years of test data
+AND C.party_id = 1116
+AND B.minrim >= 0.00001 AND B.minrim < 1000  -- IGNORE rows where minrim is NULL NaN
+--AND C.road_number = 5555
+--AND C.road_number = 5538
+--AND C.road_number = 6959
+--AND C.road_number = 7840  -- Example to improve Select Distinct adding transact_date
+
+ORDER BY C.road_number ASC, C.axel ASC, C.transact_date DESC, B.createdate DESC
+--ORDER BY C.road_number ASC, C.axel ASC, B.createdate DESC
+
+) 
+UP
+
+-- ORDER BY UP.road_number ASC, UP.axel ASC, UP.createdate DESC  --NOT NEEDED outside of Inner Select Joins
+
+
+------------------------------------
+--SELECT COUNT(*), 
+--SELECT party_id, transact_date, road_number, axel
+--FROM   public.up_eservice C
+--WHERE C.transact_date >= '2015-08-01'
+--AND   C.party_id = 1116
+---GROUP BY party_id
+--ORDER BY road_number, axel, transact_date

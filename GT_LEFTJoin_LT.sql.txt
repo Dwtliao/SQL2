@@ -1,0 +1,196 @@
+﻿
+--- Start of 1st Distinct SQL set -- LEFT Join of Correct Matl Usage rows where 
+--with matl_usag_gt as (
+with GT as (
+select *
+from  ( 
+
+--SELECT DISTINCT ON (UP.equipment, UP.axel )
+SELECT DISTINCT ON (UP.equipment, UP.axel, UP.transact_date )
+
+UP.party_id, UP.transact_date, UP.axel, UP.road_number,
+UP.equipment, UP.createdate, UP.minrim, UP.minflangeh, UP.minflanget,
+UP."Latest_Reading_Max_Date", UP."Usable_Rim_Rate", UP."RIM_Rate",
+UP.WheelWear1, UP.WheelWear2, UP.ImputedRim1, UP.ImputedRim2,
+UP.DaysInterval, UP.Avg_RIMRate_Imputed, UP.ImputedRim_Final, UP.Avg_RIM_Rate
+FROM 
+
+(
+SELECT C.party_id, C.transact_date, C.axel, C.road_number,
+	B.equipment, --B.axel, 
+	B.createdate, B.minrim, B.minflangeh, B.minflanget,
+	-- A.road_number, A.axle, 
+	A."Latest_Reading_Max_Date", A."Usable_Rim_Rate", A."RIM_Rate",
+	A."Usable_Rim_Rate" * (C.transact_date - B.createdate) as WheelWear1,
+	A."RIM_Rate" * (C.transact_date - B.createdate) as WheelWear2,
+	B.minrim - (A."Usable_Rim_Rate" * (C.transact_date - B.createdate) ) as ImputedRim1,
+	B.minrim - (A."RIM_Rate"        * (C.transact_date - B.createdate) ) as ImputedRim2,
+	(C.transact_date - B.createdate) as DaysInterval
+	,
+	CASE WHEN A."Latest_Reading_Max_Date" IS NULL
+	-- THEN 1.25
+	THEN ( B.minrim - (
+	       ( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )  * (C.transact_date - B.createdate) )
+	)
+	END AS Avg_RIMRate_Imputed,
+	
+	CASE WHEN A."Usable_Rim_Rate" > 0   --- IS NULL equivalent NaN
+	THEN ( B.minrim - (A."RIM_Rate"        * (C.transact_date - B.createdate) ) )
+	ELSE ( B.minrim - (A."Usable_Rim_Rate" * (C.transact_date - B.createdate) ) )
+	END AS ImputedRim_Final,
+	
+	( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )   as Avg_RIM_Rate
+
+FROM   public.up_eservice C
+
+LEFT JOIN           public.up_wheel_readings2 B
+--( -- Select DISTINCT ON (equipment, axel )
+--  Select 
+--         equipment, axel, createdate, minrim, minflangeh, minflanget
+--  from public.up_wheel_readings2 
+--  ORDER BY equipment ASC, axel ASC, createdate DESC
+--) B
+
+ON   C.axel = B.axel
+AND (C.road_number   = B.equipment)
+AND (C.transact_date >= B.createdate)  -- GOOD Matches where Matl Usage Date >= Wheel Reading Date
+
+LEFT JOIN public.up_wear_rate A  -- Natalia's wear rate
+on A.axle = B.axel
+AND (A.road_number   = B.equipment)
+
+WHERE C.transact_date >= '2015-08-01'   -- 1 years of test data
+AND C.party_id = 1116
+AND B.minrim >= 0.00001 AND B.minrim < 1000  -- IGNORE rows where minrim is NULL NaN
+--AND C.road_number = 5555
+--AND C.road_number = 5538
+
+ORDER BY C.road_number ASC, C.axel ASC, C.transact_date DESC, B.createdate DESC
+--ORDER BY C.road_number ASC, C.axel ASC, B.createdate DESC
+) UP
+) GT
+) , 
+
+--- Start of 2nd Distinct SQL set- LEFT Join of INCorrect Matl Usage rows where
+--matl_usag_LT as (
+LT as (
+--select LT.*
+--from  ( 
+--SELECT DISTINCT ON (UP2.equipment, UP2.axel )
+SELECT DISTINCT ON (UP2.equipment, UP2.axel, UP2.transact_date )
+
+UP2.party_id, UP2.transact_date, UP2.axel, UP2.road_number,
+UP2.equipment, UP2.createdate, UP2.minrim, UP2.minflangeh, UP2.minflanget,
+UP2."Latest_Reading_Max_Date", UP2."Usable_Rim_Rate", UP2."RIM_Rate",
+UP2.WheelWear12, UP2.WheelWear22, UP2.ImputedRim12, UP2.ImputedRim22,
+UP2.DaysInterval2, UP2.Avg_RIMRate_Imputed2, UP2.ImputedRim_Final2, UP2 .Avg_RIM_Rate2
+FROM 
+
+(
+SELECT C2.party_id, C2.transact_date, C2.axel, C2.road_number,
+	B2.equipment, --B2.axel, 
+	B2.createdate, B2.minrim, B2.minflangeh, B2.minflanget,
+	-- A2.road_number, A2.axle, 
+	A2."Latest_Reading_Max_Date", A2."Usable_Rim_Rate", A2."RIM_Rate",
+	A2."Usable_Rim_Rate" * (CURRENT_DATE - C2.transact_date) as WheelWear12,
+	A2."RIM_Rate" * (CURRENT_DATE - C2.transact_date) as WheelWear22,
+	
+	B2.minrim - (A2."Usable_Rim_Rate" * (CURRENT_DATE - C2.transact_date) ) as ImputedRim12,
+	B2.minrim - (A2."RIM_Rate"        * (CURRENT_DATE - C2.transact_date) ) as ImputedRim22,
+	(CURRENT_DATE - C2.transact_date) as DaysInterval2
+	,
+	CASE WHEN A2."Latest_Reading_Max_Date" IS NULL
+	-- THEN 1.25
+	THEN ( B2.minrim - (
+	       ( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )  * (CURRENT_DATE - C2.transact_date) )
+	)
+	END AS Avg_RIMRate_Imputed2,
+	
+	CASE WHEN A2."Usable_Rim_Rate" > 0   --- IS NULL equivalent NaN
+	THEN ( B2.minrim - (A2."RIM_Rate"        * (CURRENT_DATE - C2.transact_date) ) )
+	ELSE ( B2.minrim - (A2."Usable_Rim_Rate" * (CURRENT_DATE - C2.transact_date) ) )
+	END AS ImputedRim_Final2,
+	
+	( SELECT AVG("RIM_Rate") as AvgRimRate from public.up_wear_rate
+		WHERE "RIM_Rate" >=0 and "RIM_Rate" <= 60  )   as Avg_RIM_Rate2
+
+FROM   public.up_eservice C2
+
+LEFT JOIN           public.up_wheel_readings2 B2
+--( -- Select DISTINCT ON (equipment, axel )
+--  Select 
+--         equipment, axel, createdate, minrim, minflangeh, minflanget
+--  from public.up_wheel_readings2 
+--  ORDER BY equipment ASC, axel ASC, createdate DESC
+--) B2
+
+ON   C2.axel = B2.axel
+AND (C2.road_number   = B2.equipment)
+AND (C2.transact_date < B2.createdate)  -- Look for RARE Cases Wheel Reading Date is AFTER most recent Matl Usage Date
+					-- BAD Matches where Matl Usage Date < Wheel Reading Date
+
+ 
+LEFT JOIN public.up_wear_rate A2  -- Natalia's wear rate
+on A2.axle = B2.axel
+AND (A2.road_number   = B2.equipment)
+
+WHERE C2.transact_date >= '2015-08-01'   -- 1 years of test data
+AND C2.party_id = 1116
+AND B2.minrim >= 0.00001 AND B2.minrim < 1000  -- IGNORE rows where minrim is NULL NaN
+--AND C.road_number = 2522
+-- AND C.road_number = 5538
+-- AND C.road_number = 5555
+-- AND C.road_number = 5249
+-- AND ( C.transact_date < B.createdate )  --Material Usage happens AFTER a wheel reading
+
+ORDER BY C2.road_number ASC, C2.axel ASC, C2.transact_date DESC, B2.createdate DESC
+
+) UP2
+--) LT
+
+) --end of matl_usag_LT  AS
+
+, 
+--- Start of 3rd Distinct SQL set Inner Join GT & LT- rows where Matl Usage InCorrect Date Wheel Readings are covered
+--  InnerJoin_IJ as (
+IJ as (
+
+--SELECT * FROM matl_usag_gt
+SELECT 
+GT.party_id, GT.transact_date, GT.axel, GT.road_number,
+GT.equipment, GT.createdate, GT.minrim, GT.minflangeh, GT.minflanget,
+LT.createdate as FutureCreateDate,  -- Wheel Reading Dates in Future
+GT."Latest_Reading_Max_Date", GT."Usable_Rim_Rate", GT."RIM_Rate",
+GT.WheelWear1, GT.WheelWear2, GT.ImputedRim1, GT.ImputedRim2,
+GT.DaysInterval, GT.Avg_RIMRate_Imputed, GT.ImputedRim_Final, GT.Avg_RIM_Rate
+
+FROM GT
+
+INNER JOIN LT on  ( LT.road_number = GT.road_number and LT.axel = GT.axel and LT.transact_date = GT.transact_date )
+
+)
+
+-- Start of Final SQL Select - FIND UNMatched LT rows representing EXCEPTION cases where 
+-- WHEEL Reading Date > most recent Matl Usage date and System Current Date has been used to 
+-- to calculated a Days Interval for Rim Estimation formula
+
+SELECT 
+LT.party_id, LT.transact_date, LT.axel, LT.road_number,
+--LT.equipment, LT.createdate, LT.minrim, --LT.minflangeh, LT.minflanget,
+IJ.equipment, IJ.createdate, IJ.minrim, IJ.minflangeh, IJ.minflanget,
+IJ.createdate as FutureCreateDate,  -- Wheel Reading Dates in Future
+CURRENT_DATE as SysCurrentDate,     -- System Current Date used in LT calculations
+IJ."Latest_Reading_Max_Date", IJ."Usable_Rim_Rate", IJ."RIM_Rate",
+IJ.WheelWear1, IJ.WheelWear2, IJ.ImputedRim1, IJ.ImputedRim2,
+IJ.DaysInterval, IJ.Avg_RIMRate_Imputed, IJ.ImputedRim_Final, IJ.Avg_RIM_Rate
+--LT."Latest_Reading_Max_Date", LT."Usable_Rim_Rate", LT."RIM_Rate",
+--LT.WheelWear12, LT.WheelWear22, LT.ImputedRim12, LT.ImputedRim22,
+--LT.DaysInterval2, LT.Avg_RIMRate_Imputed2, LT.ImputedRim_Final2, LT.Avg_RIM_Rate2
+
+FROM LT
+LEFT JOIN IJ on  (LT.road_number = IJ.road_number and LT.axel = IJ.axel and LT.transact_date = IJ.transact_date )
+WHERE IJ.createdate IS NULL    --EXCEPTIONS condition!
+-- AND   LT.road_number = 6325
