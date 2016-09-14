@@ -1,5 +1,5 @@
-# SQL2
-2nd SQL for With As qry samples
+# With As SQL qrys
+SQL using With As qry samples
 Using With As clause in SQL to create temporary tables 
 Example to build up temporary tables from several independent SQL joins 
 so that all the temp tables can be used in final join at bottom. 
